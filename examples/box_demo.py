@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='matrix_demo arguments',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--width', type=int, default=8, help='Width')
+    parser.add_argument('--width', type=int, default=32, help='Width')
     parser.add_argument('--height', type=int, default=8, help='height')
     parser.add_argument('--block-orientation', type=int, default=-90, choices=[0, 90, -90], help='Corrects block orientation when wired vertically')
     parser.add_argument('--rotate', type=int, default=0, choices=[0, 1, 2, 3], help='Rotation factor')
