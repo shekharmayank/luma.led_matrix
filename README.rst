@@ -1,3 +1,8 @@
+My working commands:
+```
+python examples/view_message.py --text "Ram Jee Sharma" --cascaded 4 --block-orientation -90
+```
+
 `luma.core <https://github.com/rm-hull/luma.core>`__ **|** 
 `luma.docs <https://github.com/rm-hull/luma.docs>`__ **|** 
 `luma.emulator <https://github.com/rm-hull/luma.emulator>`__ **|** 
