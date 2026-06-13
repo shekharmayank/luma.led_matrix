@@ -6,8 +6,8 @@ from datetime import datetime
 from luma.led_matrix.device import max7219
 from luma.core.interface.serial import spi, noop
 from luma.core.render import canvas
-from luma.core.legacy import text
-from luma.core.legacy.font import proportional, TINY_FONT
+from luma.core.legacy import text, show_message
+from luma.core.legacy.font import proportional, CP437_FONT, TINY_FONT, SINCLAIR_FONT
 
 
 COOL_MSGS = [
@@ -23,87 +23,131 @@ COOL_MSGS = [
     "CARPE DIEM",
 ]
 
+STAR_W = 32
+STAR_H = 8
+NUM_STARS = 15
 
-def random_bottom_text():
-    now = datetime.now()
-    r = random.randint(0, 4)
-    if r == 0:
-        return now.strftime("%a %d %b")
-    elif r == 1:
-        return random.choice(COOL_MSGS)
-    elif r == 2:
-        return now.strftime("%d %b %Y")
-    elif r == 3:
-        return random.choice(COOL_MSGS)
-    else:
-        return now.strftime("%I:%M %p").lstrip("0").lower()
+
+def stars_init():
+    return [[random.randint(0, STAR_W - 1), random.randint(0, STAR_H - 1), random.randint(1, 3)] for _ in range(NUM_STARS)]
+
+
+def stars_update(stars):
+    for s in stars:
+        s[2] += 1
+        if s[2] > 6:
+            s[0] = random.randint(0, STAR_W - 1)
+            s[1] = random.randint(0, STAR_H - 1)
+            s[2] = 1
 
 
 def starfield(device, frames=30):
-    w, h = device.width, device.height
-    stars = [[random.randint(0, w - 1), random.randint(0, h - 1),
-              random.randint(1, 3)] for _ in range(15)]
+    stars = stars_init()
     for _ in range(frames):
         with canvas(device) as draw:
             for s in stars:
+                intensity = min(255, (s[2] * 40))
+                color = (intensity >> 4) & 0xF
                 draw.point((s[0], s[1]), fill="white")
-            for s in stars:
-                s[2] += 1
-                if s[2] > 6:
-                    s[0] = random.randint(0, w - 1)
-                    s[1] = random.randint(0, h - 1)
-                    s[2] = 1
+        stars_update(stars)
         time.sleep(0.08)
 
 
-def breathe(device, steps=8, delay=0.03):
-    for i in range(0, 16 * steps):
-        device.contrast(i // steps)
+def breathe(device, steps=10, delay=0.04):
+    for intensity in range(0, 16 * steps):
+        device.contrast(intensity // steps)
         time.sleep(delay)
-    for i in range(16 * steps, -1, -1):
-        device.contrast(i // steps)
+    for intensity in range(16 * steps, -1, -1):
+        device.contrast(intensity // steps)
         time.sleep(delay)
+
+
+def minute_change(device):
+    hours = datetime.now().strftime('%H')
+    minutes = datetime.now().strftime('%M')
+
+    def helper(current_y):
+        with canvas(device) as draw:
+            text(draw, (0, 1), hours, fill="white", font=proportional(CP437_FONT))
+            text(draw, (15, 1), ":", fill="white", font=proportional(TINY_FONT))
+            text(draw, (17, current_y), minutes, fill="white", font=proportional(CP437_FONT))
+        time.sleep(0.1)
+    for current_y in range(1, 9):
+        helper(current_y)
+    minutes = datetime.now().strftime('%M')
+    for current_y in range(9, 1, -1):
+        helper(current_y)
+
+
+def animation(device, from_y, to_y):
+    hourstime = datetime.now().strftime('%H')
+    mintime = datetime.now().strftime('%M')
+    current_y = from_y
+    while current_y != to_y:
+        with canvas(device) as draw:
+            text(draw, (0, current_y), hourstime, fill="white", font=proportional(CP437_FONT))
+            text(draw, (15, current_y), ":", fill="white", font=proportional(TINY_FONT))
+            text(draw, (17, current_y), mintime, fill="white", font=proportional(CP437_FONT))
+        time.sleep(0.1)
+        current_y += 1 if to_y > from_y else -1
+
+
+def scroll_date(device):
+    now = datetime.now()
+    date_str = now.strftime("%d %b %Y %a")
+    animation(device, 1, 8)
+    show_message(device, date_str, fill="white", font=proportional(CP437_FONT))
+    animation(device, 8, 1)
+
+
+def show_fun_message(device):
+    msg = random.choice(COOL_MSGS)
+    animation(device, 1, 8)
+    show_message(device, msg, fill="white", font=proportional(SINCLAIR_FONT))
+    animation(device, 8, 1)
 
 
 def main():
     serial = spi(port=0, device=0, gpio=noop())
-    device = max7219(serial, cascaded=4, block_orientation=-90,
-                     blocks_arranged_in_reverse_order=False)
+    device = max7219(serial, cascaded=4, block_orientation=-90, blocks_arranged_in_reverse_order=False)
     device.contrast(16)
 
     starfield(device, 25)
 
+    animation(device, 8, 1)
+
     toggle = False
-    bottom_msg = random_bottom_text()
-    msg_ticks = 0
-    breath_ticks = 0
+    last_min = -1
+    fun_countdown = random.randint(3, 6)
 
     while True:
         toggle = not toggle
         now = datetime.now()
         sec = now.second
+        minute = now.minute
 
-        msg_ticks += 1
-        if msg_ticks >= 24:
-            msg_ticks = 0
-            bottom_msg = random_bottom_text()
+        if minute != last_min:
+            last_min = minute
+            fun_countdown -= 1
+            if fun_countdown == 0:
+                breathe(device, 6, 0.03)
+                fun_countdown = random.randint(3, 6)
 
-        breath_ticks += 1
-        if breath_ticks >= 240:
-            breath_ticks = 0
-            breathe(device, 6, 0.02)
-
-        hours = now.strftime('%H')
-        minutes = now.strftime('%M')
-
-        with canvas(device) as draw:
-            text(draw, (0, 0), hours, fill="white", font=proportional(TINY_FONT))
-            text(draw, (12, 0), ":" if toggle else " ",
-                 fill="white", font=proportional(TINY_FONT))
-            text(draw, (15, 0), minutes, fill="white", font=proportional(TINY_FONT))
-            text(draw, (0, 4), bottom_msg, fill="white", font=proportional(TINY_FONT))
-
-        time.sleep(0.5)
+        if sec == 59:
+            minute_change(device)
+        elif sec == 30:
+            scroll_date(device)
+        elif fun_countdown == 0 and sec % 10 == 0:
+            show_fun_message(device)
+            fun_countdown = random.randint(3, 6)
+        else:
+            hours = now.strftime('%H')
+            minutes = now.strftime('%M')
+            with canvas(device) as draw:
+                text(draw, (0, 1), hours, fill="white", font=proportional(CP437_FONT))
+                text(draw, (15, 1), ":" if toggle else " ", fill="white", font=proportional(TINY_FONT))
+                text(draw, (17, 1), minutes, fill="white", font=proportional(CP437_FONT))
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":
